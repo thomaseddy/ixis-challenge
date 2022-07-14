@@ -3,9 +3,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 
+from wrangle_data import download_data
+
 
 def make_all_column_histograms():
     '''Loops over columns in dataset and generates histogram'''
+
+    # download the data if not already done
+    if not os.path.isdir('bank-additional'):
+        download_data()
 
     df = pd.read_csv('bank-additional/bank-additional-full.csv', sep=';')
 

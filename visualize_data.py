@@ -57,8 +57,8 @@ def make_column_histogram(df, column, output_path):
     ax.set_title('Distribution of "{}" attribute broken out by target variable'.format(column))
     ax.legend()
 
-    plt.tight_layout()
-    plt.savefig(output_path)
+    fig.tight_layout()
+    fig.savefig(output_path)
 
 
 

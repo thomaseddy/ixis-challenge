@@ -97,12 +97,16 @@ def make_one_hot_column(df, column):
     return df
 
 
-
-if __name__ == "__main__":
-
+def output_cleaned_data():
     # save a cleaned version of the dataset, creating a directory if not exists
     if not os.path.isdir('data'):
         os.mkdir('data')
 
     df = clean_data()
     df.to_csv('data/cleaned_dataset.csv')
+
+
+
+if __name__ == "__main__":
+
+    output_cleaned_data()

@@ -74,9 +74,58 @@ Many of the features included in this dataset are categorical in nature. We need
 
 One quirk is that one-hot encoding leads to two redundant columns for binary categorical variables. There are two in this dataset: `contact`, which says whether the call was to a cellular or telephone line, and our target variable `y` which is a yes/no field indicating won/lost. I treated these separately and did the natural thing of resolving them to a single column. 
 
+All the considerations discussed in the data exploration and wrangling section were implemented in code to produce a cleaned version of the dataset. To generate this file run
+```
+$ pipenv run python wrangle_data.py
+```
+which outputs a CSV to `data/cleaned_dataset.csv`. This is the corpus that will be used for training and testing. 
 
 ## Model training and testing
 
+From the cleaned data, I held out 20% of the records as a test set and used the rest to train classification models. 
+
+I trained two classification models for this problem: a random forest and a simple neural network with one hidden layer. Running
+```
+$ pipenv run python train_models.py
+```
+will generate both models and accompanying feature importance and performance figures. A brief discussion of considerations for each model follows. 
+
+### Random forest  
+
+The first model that I trained was a random forest using scikit-learn's [RandomForestClassifier](https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestClassifier.html#sklearn.ensemble.RandomForestClassifier.predict) class. I used cross-validation to tune the parameters of this classifier without overfitting. From this process I determined that a good configuration was using: an ensemble of 100 decision trees, considering the square root of the total number of features at each node, and preventing splitting with less than 50 samples in a node. 
+
+Once trained it is important to check accuracy and investigate important features. For the former, I scored the accuracy of the random forest against the test set of data that had been withheld. The classifier was able to correctly label just over 90% of these test records. To gauge the usefulness of each feature, I used [permutation feature importance](https://scikit-learn.org/stable/modules/permutation_importance.html#permutation-importance) which randomly swaps feature inputs and determines which swaps lead to the biggest loss of predictive power. The results are visualized below. 
+
+<img src="https://user-images.githubusercontent.com/16196888/179255853-063a122b-442e-466a-a195-a0c5cd97f57f.png" width="500"/>
+
+Happily, we see that two features we identified as likely to be important during data exploration indeed top the list!
+
+### Neural network
+
+I thought that a simple neural network with a single hidden layer would provide an interesting comparison to the random forest model. For this, I used scikit-learn's [multi-layer perceptron](https://scikit-learn.org/stable/modules/generated/sklearn.neural_network.MLPClassifier.html) classifier. These types of classifiers are much more sensitive to feature scaling, however, so I added an additional step of scaling the training dataset so that each feature had a mean of 0 and a variance of 1.
+
+This classifier was also able to correctly predict the class of over 90% of the test data. I once again used permutation feature importance to evaluate the usefulness of each feature to the classifier. The graph below tells a broadly similar story about which features are important. 
+
+<img src="https://user-images.githubusercontent.com/16196888/179255889-fc5d839e-48e3-4079-b81e-8976b7840b55.png" width="500"/>
+
+### Model comparison
+
+Both models predicted the labels of the test dataset with almost identical accuracy at their default thresholds. How can we say which one is better? There are a couple aspects we could consider.
+
+It's common practive to plot [ROC curves](https://en.wikipedia.org/wiki/Receiver_operating_characteristic) for classifiers and measuring the area under the curve (AUC) to determine their relative power. This is plotted for both models below. We see that the random forest slightly edges out the neural network model in terms of AUC, an argument for it being the better model. 
+
+<img src="https://user-images.githubusercontent.com/16196888/179255959-1f3646e3-12c8-44ca-92fe-e4481206a457.png" width="500"/>
+
+However, there are other considerations we could make given that both classifiers perform relatively well. The neural network model is far more lightweight than the random forest in terms of model size and runtime to execute predictions. A simple test that I ran shows the predictions for the neural net returning almost 20 times as a quickly on my laptop. If we wanted to deploy this model at a large scale factors like this might become important.
+
+Since we don't have an explicitly stated performance requirements, however, we'll move forward with the random forest as our chosen model since it's predictive power is slightly better in terms of accuracy and AUC. 
+
 ## Conclusion and next steps
 
-## Client deliverable
+For the reasons described above, we've chosen a random forest model as our solution for this project. If you've run the `train_models.py` script then this model has already been generated and saved in the project directory. There's a convenience function `random_forest_predict` which will load the model and use it to make predictions on clean data. 
+
+Now what? How do we get this model into production? This is where I'd work with an engineering team to create some kind of a microservice that wraps this prediction function, taking in the relevant features and returning predictions. We would also need to talk with the end banking customer to determine how to integrate this new piece of knoweldge into their sales operations for maximum effect. 
+
+### Client deliverable
+
+The project instructions also indicate that a non-technical slide deck should be created outlining the methodology, highlights, and use of the model. [Here's a link to the client deliverable.](https://docs.google.com/presentation/d/1CzvtzBG5Bk5hz7wA4uT5853undbuLlsp5RIalTytv2A/edit?usp=sharing)

@@ -2,11 +2,14 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import pickle
 import os
+from time import time
 
-from sklearn.model_selection import train_test_split
-from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.inspection import permutation_importance
+from sklearn.preprocessing import StandardScaler
+from sklearn.neural_network import MLPClassifier
+from sklearn.metrics import RocCurveDisplay
 
 from wrangle_data import output_cleaned_data
 
@@ -116,7 +119,7 @@ def train_random_forest(X_train, y_train, X_test, y_test, seed=0x1337beef):
     ax.barh(subset.index, subset['average_decrease_in_accuracy_score'])
     ax.set_ylabel('Feature')
     ax.set_xlabel('Average decrease in accuracy score')
-    ax.set_title('Permutation Importances')
+    ax.set_title('Random Forest Permutation Importances')
 
     fig.tight_layout()
 
@@ -149,6 +152,88 @@ def random_forest_predict(X, clf=None):
     return clf.predict(X)
 
 
+def train_neural_net(X_train, y_train, X_test, y_test, seed=0x1337beef):
+    '''Train a simple neural network classifier, saving model and creating
+    visualization of permutation importance'''
+
+    # this classifier is sensitive to feature scaling so we are going to use
+    # sklearn's StandardScaler
+    scaler = StandardScaler()
+    scaler.fit(X_train)
+    X_train_scaled = scaler.transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
+
+    # We'll set up a simple neural net with a single hidden layer
+    clf = MLPClassifier(hidden_layer_sizes=(20,), random_state=seed)
+
+    print("Training neural network classifier...\n")
+
+    clf.fit(X_train_scaled, y_train)
+
+    print("Neural network accuracy scores")
+    print("Train: %f" % clf.score(X_train_scaled, y_train)) # 0.907011
+    print("Test: %f\n" % clf.score(X_test_scaled, y_test)) # 0.902889
+
+    # now let's compute feature importance, adapted from
+    # https://scikit-learn.org/stable/auto_examples/inspection/plot_permutation_importance.html
+    print("Computing feature importance...\n")
+    result = permutation_importance(clf, X_test_scaled, y_test, random_state=seed)
+
+    importances = pd.DataFrame(result.importances_mean, index=X_test.columns,
+                                columns=['average_decrease_in_accuracy_score'])
+
+    # create bar chart
+    importances.sort_values('average_decrease_in_accuracy_score', inplace=True)
+    subset = importances[importances.average_decrease_in_accuracy_score > 0]
+
+    fig, ax = plt.subplots(figsize=[6.0, 6.0], dpi=200)
+
+    ax.barh(subset.index, subset['average_decrease_in_accuracy_score'])
+    ax.set_ylabel('Feature')
+    ax.set_xlabel('Average decrease in accuracy score')
+    ax.set_title('Neural Network Permutation Importances')
+
+    fig.tight_layout()
+
+    if not os.path.isdir('figures'):
+        os.mkdir('figures')
+
+    fig.savefig('figures/neural_network_feature_importance.png')
+
+    # save neural network classifier for posterity
+    if not os.path.isdir('models'):
+        os.mkdir('models')
+
+    with open('models/neural_network.pkl', 'wb') as f:
+        pickle.dump(clf, f)
+
+    #we also need to save out the scaler for future use
+    with open('models/scaler.pkl', 'wb') as f:
+        pickle.dump(scaler, f)
+
+    return clf, scaler
+
+
+def neural_net_predict(X, clf=None, scaler=None):
+    '''Returns predictions based on the neural network model'''
+
+    #if no classifier is passed, grab saved model if exists, otherwise train
+    if not clf or not scaler:
+
+        if os.path.isfile('models/neural_network.pkl') \
+            and os.path.isfile('models/scaler.pkl'):
+
+            with open('models/neural_network.pkl', 'rb') as f:
+                clf = pickle.load(f)
+
+            with open('models/scaler.pkl', 'rb') as f:
+                scaler = pickle.load(f)
+
+        else:
+            clf, scaler = train_neural_net()
+
+    return clf.predict(scaler.transform(X))
+
 
 
 if __name__ == "__main__":
@@ -174,4 +259,28 @@ if __name__ == "__main__":
 
 
     # train random forest classifier
-    clf = train_random_forest(X_train, y_train, X_test, y_test)
+    rf = train_random_forest(X_train, y_train, X_test, y_test)
+
+    # train neural network classifier
+    nn, scaler = train_neural_net(X_train, y_train, X_test, y_test)
+
+    # which model executes faster?
+    start = time()
+    preds = random_forest_predict(X_test, rf)
+    rf_done = time()
+    preds = neural_net_predict(X_test, nn, scaler)
+    nn_done = time()
+
+    print("Random forest predictions ran in: %f" % (rf_done - start))
+    print("Random forest predictions ran in: %f" % (nn_done - rf_done))
+
+    # generate a ROC curve plot of both classifiers
+    fig, ax = plt.subplots(figsize=[6.0, 6.0], dpi=200)
+
+    rf_roc = RocCurveDisplay.from_estimator(rf, X_test, y_test)
+    rf_roc.plot(ax=ax)
+    nn_roc = RocCurveDisplay.from_estimator(nn, scaler.transform(X_test), y_test)
+    nn_roc.plot(ax=ax)
+
+    ax.set_title('Random Forest vs. Neural Net ROC Curves')
+    fig.savefig('figures/roc_curves.png')
